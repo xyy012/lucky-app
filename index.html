@@ -631,12 +631,29 @@ function putRemote(obj,sha){
     if(!r.ok)throw new Error('上传失败('+r.status+')');
   });
 }
+/* 数据量体重：样本数 + 批次数 + 批内样品数。
+   旧版本数据的时间戳可能是 0，两端都是 0 时不能只比时间，否则会误判"已是最新"而永不拉取。 */
+function storeWeight(d){
+  if(!d)return -1;
+  var n=(d.samples||[]).length+(d.batches||[]).length;
+  (d.batches||[]).forEach(function(b){n+=(b.items||[]).length;});
+  return n;
+}
+/* 判断云端是否比本地更新：时间戳大的胜；时间戳相同时数据多的胜 */
+function remoteIsNewer(remote){
+  if(!remote)return false;
+  var localTs=store.updatedAt||0,remoteTs=remote.data.updatedAt||0;
+  if(remoteTs!==localTs)return remoteTs>localTs;
+  return storeWeight(remote.data)>storeWeight(store);
+}
+/* 两端时间戳和数据量都相同 → 无需同步 */
+function sameAsRemote(remote){
+  return !!remote&&(remote.data.updatedAt||0)===(store.updatedAt||0)&&storeWeight(remote.data)===storeWeight(store);
+}
 /* 把本地数据推送到云端（若本地更新） */
 function pushLocal(){
   return fetchRemote().then(function(remote){
-    var localTs=store.updatedAt||0;
-    var remoteTs=remote?(remote.data.updatedAt||0):0;
-    if(localTs<=remoteTs){setLastSync();return;}
+    if(remoteIsNewer(remote)||sameAsRemote(remote)){setLastSync();return;}
     return putRemote(store,remote?remote.sha:null).then(setLastSync);
   });
 }
@@ -653,18 +670,16 @@ function syncNow(manual){
   var t=getToken();
   if(!t){if(manual)toast('请先在下方粘贴并保存 GitHub 密钥');return Promise.resolve(false);}
   return fetchRemote().then(function(remote){
-    var localTs=store.updatedAt||0;
-    var remoteTs=remote?(remote.data.updatedAt||0):0;
-    if(remote&&remoteTs>localTs){
+    if(remoteIsNewer(remote)){
       var d=remote.data;
-      store={presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),samples:Array.isArray(d.samples)?d.samples:[],batches:Array.isArray(d.batches)?d.batches:[],updatedAt:remoteTs};
+      store={presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),samples:Array.isArray(d.samples)?d.samples:[],batches:Array.isArray(d.batches)?d.batches:[],updatedAt:d.updatedAt||0};
       persistStore();
       render();
       setLastSync();
       if(manual)toast('已从云端拉取最新数据');
       return true;
     }
-    if(remoteTs<localTs||!remote){
+    if(!sameAsRemote(remote)){
       return putRemote(store,remote?remote.sha:null).then(function(){
         setLastSync();
         if(manual)toast('已上传本地数据到云端');
