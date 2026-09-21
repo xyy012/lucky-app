@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#4caf50">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>中奖率预测</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --green-50:#f3faf4; --green-100:#e8f5e9; --green-200:#c8e6c9; --green-300:#a5d6a7;
+  --green-500:#4caf50; --green-600:#43a047; --green-700:#388e3c; --green-800:#2e7d32;
+  --blue-500:#3f83f8; --blue-600:#3572e8;
+  --text:#1f2937; --muted:#7b8794; --danger:#e53935; --danger-bg:#fdecea;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  background:var(--green-100);color:var(--text);min-height:100vh;padding-bottom:80px;font-size:15px;
+}
+.app-header{
+  position:sticky;top:0;z-index:30;background:var(--green-500);color:#fff;
+  padding:13px 14px;display:flex;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.12);
+}
+.app-header h1{font-size:19px;margin:0;flex:1;text-align:center;font-weight:600;}
+.btn-back{background:rgba(255,255,255,.25);border:none;color:#fff;font-size:14px;padding:6px 12px;border-radius:8px;width:56px;}
+main{padding:14px;max-width:560px;margin:0 auto;}
+.card{background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(46,125,50,.08);}
+.list-item{display:flex;align-items:center;gap:10px;}
+.li-main{flex:1;min-width:0;}
+.li-title{font-size:16px;font-weight:600;overflow-wrap:break-word;}
+.li-sub{font-size:12.5px;color:var(--muted);margin-top:3px;}
+.li-prob{text-align:right;flex-shrink:0;}
+.prob-num{font-size:24px;font-weight:700;color:var(--green-700);}
+.prob-num.zero{color:var(--muted);}
+/* 按钮 */
+.btn{border:none;border-radius:10px;padding:9px 14px;font-size:14px;background:#eef2f6;color:var(--text);cursor:pointer;}
+.btn:active{opacity:.75;}
+.btn-primary{background:var(--green-500);color:#fff;font-weight:600;}
+.btn-danger{background:var(--danger);color:#fff;}
+.btn-ghost{background:var(--green-100);color:var(--green-800);}
+.btn-danger-ghost{background:var(--danger-bg);color:var(--danger);}
+.btn-block{display:block;width:100%;margin-top:6px;padding:12px;font-size:15px;}
+/* 特征选择 */
+.feat-group{margin-bottom:12px;}
+.feat-label{font-size:13px;color:var(--muted);margin-bottom:6px;}
+.chips{display:flex;flex-wrap:wrap;gap:8px;}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--green-50);border:1.5px solid var(--green-200);color:var(--text);border-radius:20px;padding:7px 14px;font-size:14px;cursor:pointer;}
+.chip.active{background:var(--green-500);border-color:var(--green-500);color:#fff;font-weight:600;}
+.chip-static{padding:5px 10px;font-size:13px;}
+.chip-x{border:none;background:rgba(0,0,0,.08);color:inherit;border-radius:50%;width:18px;height:18px;line-height:1;font-size:13px;padding:0;cursor:pointer;}
+/* 方格 */
+.grid-wrap{display:flex;justify-content:center;margin:10px 0;}
+.grid{position:relative;display:grid;gap:4px;padding:4px;background:#fff;border:1.5px solid var(--blue-600);border-radius:10px;width:min(100%,220px);}
+.grid-cell{background:var(--blue-500);border-radius:4px;aspect-ratio:1;min-height:52px;}
+.grid-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;pointer-events:none;}
+.grid-center .gc-line{font-size:13px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.55);font-weight:600;max-width:90%;overflow-wrap:break-word;}
+.grid-center .gc-prob{font-size:22px;font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);}
+.grid-hint{text-align:center;color:var(--muted);font-size:13px;padding:18px 0;background:var(--green-50);border-radius:10px;}
+/* 批次列表中的方格缩略图 */
+.grid-thumb{width:84px;gap:3px;padding:3px;border-radius:8px;flex-shrink:0;margin-left:2px;}
+.grid-thumb .grid-cell{min-height:0;border-radius:3px;}
+.grid-thumb-empty{width:84px;height:60px;display:flex;align-items:center;justify-content:center;background:var(--green-50);border:1.5px dashed var(--green-200);border-radius:8px;color:var(--muted);font-size:12px;flex-shrink:0;}
+.li-prob-line{margin-top:4px;display:flex;align-items:baseline;gap:6px;}
+.li-prob-line .prob-num{font-size:18px;}
+.result-card{text-align:center;}
+.result-card .prob-num{font-size:30px;margin-top:6px;}
+.result-card .li-sub{margin:4px 0 10px;}
+.hint{font-size:12px;color:var(--muted);}
+.hint.center{text-align:center;margin-top:6px;}
+/* 徽标 */
+.badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:12px;}
+.badge-win{background:var(--green-100);color:var(--green-800);}
+.badge-lose{background:var(--danger-bg);color:var(--danger);}
+/* 空状态 */
+.empty{text-align:center;color:var(--muted);padding:40px 10px;font-size:14px;line-height:1.9;}
+.stats{text-align:center;color:var(--green-800);font-weight:600;}
+/* 分析页 */
+.rule-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:10px;margin-top:6px;}
+.rule-item.win{background:var(--green-100);}
+.rule-item.lose{background:var(--danger-bg);}
+.rule-text{font-size:14px;font-weight:600;overflow-wrap:break-word;}
+.rule-item.win .rule-text{color:var(--green-800);}
+.rule-item.lose .rule-text{color:var(--danger);}
+.rule-count{font-size:12px;color:var(--muted);flex-shrink:0;}
+.order-item{margin-top:10px;}
+.order-head{font-size:14px;font-weight:600;display:flex;align-items:center;}
+.order-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--green-500);color:#fff;font-size:11px;margin-right:6px;flex-shrink:0;}
+.order-vals{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.order-val{background:var(--green-50);border:1px solid var(--green-200);border-radius:8px;padding:4px 9px;font-size:12.5px;}
+.order-val b{color:var(--green-800);}
+/* 输入 */
+.add-row{display:flex;gap:8px;margin-top:10px;}
+.input{flex:1;border:1.5px solid var(--green-200);border-radius:10px;padding:8px 12px;font-size:14px;outline:none;background:#fff;min-width:0;}
+.input:focus{border-color:var(--green-500);}
+/* 底部导航 */
+.tabbar{position:fixed;bottom:0;left:0;right:0;z-index:30;display:flex;background:#fff;border-top:1px solid var(--green-200);box-shadow:0 -2px 10px rgba(0,0,0,.06);padding-bottom:env(safe-area-inset-bottom);}
+.tabbar button{flex:1;border:none;background:none;padding:9px 0 8px;font-size:12px;color:var(--muted);cursor:pointer;}
+.tabbar button .tab-icon{display:block;font-size:21px;margin-bottom:2px;}
+.tabbar button.active{color:var(--green-700);font-weight:600;}
+/* 弹窗 */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;}
+.modal-backdrop.hidden{display:none;}
+.modal{background:#fff;border-radius:14px;padding:18px;width:100%;max-width:320px;}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:10px;}
+.modal-msg{font-size:14px;color:var(--text);margin-bottom:16px;line-height:1.6;}
+.modal-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:6px;}
+/* 提示条 */
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:rgba(30,41,59,.92);color:#fff;padding:9px 18px;border-radius:20px;font-size:13px;z-index:60;opacity:0;transition:.25s;pointer-events:none;max-width:85%;text-align:center;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<header class="app-header">
+  <button class="btn-back" id="backBtn" style="display:none">‹ 返回</button>
+  <h1 id="headerTitle">批次</h1>
+  <div style="width:56px"></div>
+</header>
+<main id="app"></main>
+<nav class="tabbar">
+  <button data-tab="batches"><span class="tab-icon">📦</span>批次</button>
+  <button data-tab="library"><span class="tab-icon">📚</span>样本库</button>
+  <button data-tab="analysis"><span class="tab-icon">📊</span>分析</button>
+  <button data-tab="settings"><span class="tab-icon">⚙️</span>设置</button>
+</nav>
+<div class="modal-backdrop hidden" id="modalBackdrop"><div class="modal" id="modalBox"></div></div>
+<input type="file" id="importFile" accept=".json,application/json" style="display:none">
+<div id="toast"></div>
+<script>
+'use strict';
+/* ================= 数据存储 ================= */
+var LS_KEY='luckyApp.v1';
+var DEFAULT_PRESETS={
+  sounds:['a','b','c','d','e','f','g','h','i','j','k'],
+  styles:['1*2','2*2','2*3'],
+  itemTypes:['收藏品','仪器仪表','生活用品','医疗用品','纸制品','电子产品','工具','军用杂物','能源物品','建筑材料']
+};
+var store=loadStore();
+function loadStore(){
+  try{
+    var raw=localStorage.getItem(LS_KEY);
+    if(raw){
+      var d=JSON.parse(raw);
+      return {
+        presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),
+        samples:Array.isArray(d.samples)?d.samples:[],
+        batches:Array.isArray(d.batches)?d.batches:[]
+      };
+    }
+  }catch(e){console.warn(e);}
+  return {presets:Object.assign({},DEFAULT_PRESETS),samples:[],batches:[]};
+}
+function saveStore(){
+  try{localStorage.setItem(LS_KEY,JSON.stringify(store));}
+  catch(e){toast('保存失败：'+e.message);}
+}
+function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function fmtTime(ts){var d=new Date(ts);var p=function(n){return String(n).padStart(2,'0');};return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+p(d.getHours())+':'+p(d.getMinutes());}
+function fmtProb(p){var v=Math.round(p*10000)/100;return (v%1===0?v.toFixed(0):v.toFixed(2))+'%';}
+
+/* ================= 页面状态 ================= */
+var view={name:'batches'};
+var formState=null;
+var modalCb=null;
+var app=document.getElementById('app');
+
+function getBatch(){return store.batches.find(function(b){return b.id===view.batchId;});}
+function getItem(){var b=getBatch();return b?b.items.find(function(i){return i.id===view.itemId;}):null;}
+
+/* ================= 概率计算 ================= */
+function calcProb(checked){
+  var keys=['sound','style','orientation','itemType'].filter(function(k){return checked[k];});
+  var matched=store.samples.filter(function(s){
+    return keys.every(function(k){return s[k]===checked[k];});
+  });
+  var wins=matched.filter(function(s){return s.win;}).length;
+  return {total:matched.length,wins:wins,prob:matched.length?wins/matched.length:0};
+}
+function chipVals(group,checked){
+  var vals=store.presets[group].slice();
+  if(checked&&vals.indexOf(checked)<0)vals.unshift(checked);
+  return vals;
+}
+
+/* ================= 视图渲染 ================= */
+function render(){
+  document.getElementById('modalBackdrop').classList.add('hidden');modalCb=null;
+  var hd=document.getElementById('headerTitle');
+  var back=document.getElementById('backBtn');
+  if(view.name==='batches'){hd.textContent='批次';back.style.display='none';app.innerHTML=viewBatches();}
+  else if(view.name==='batch'){hd.textContent='批次详情';back.style.display='';app.innerHTML=viewBatch();}
+  else if(view.name==='item'){hd.textContent='样品'+itemIndex();back.style.display='';app.innerHTML=viewItem();}
+  else if(view.name==='library'){hd.textContent='样本库';back.style.display='none';app.innerHTML=viewLibrary();}
+  else if(view.name==='form'){hd.textContent=view.editSampleId?'编辑样本':'录入样本';back.style.display='';app.innerHTML=viewForm();}
+  else if(view.name==='analysis'){hd.textContent='分析';back.style.display='none';app.innerHTML=viewAnalysis();}
+  else if(view.name==='settings'){hd.textContent='设置';back.style.display='none';app.innerHTML=viewSettings();}
+  var tabMap={batches:'batches',batch:'batches',item:'batches',library:'library',form:'library',analysis:'analysis',settings:'settings'};
+  document.querySelectorAll('.tabbar button').forEach(function(b){
+    b.classList.toggle('active',b.dataset.tab===tabMap[view.name]);
+  });
+}
+function itemIndex(){var b=getBatch();return b?b.items.findIndex(function(i){return i.id===view.itemId;})+1:0;}
+
+function viewBatches(){
+  var list=store.batches.slice().sort(function(a,b){return b.createdAt-a.createdAt;});
+  var html=list.length?list.map(function(b){
+    return '<div class="card list-item" data-action="openBatch" data-id="'+b.id+'">'
+      +'<div class="li-main"><div class="li-title">'+esc(b.name)+'</div>'
+      +'<div class="li-sub">'+b.items.length+' 个样品 · '+fmtTime(b.createdAt)+'</div></div>'
+      +'<button class="btn btn-danger-ghost" data-action="delBatch" data-id="'+b.id+'">删除</button></div>';
+  }).join(''):'<div class="empty">还没有批次<br>点击下方按钮新建一个吧</div>';
+  return html+'<button class="btn btn-primary btn-block" data-action="addBatch">＋ 新建批次</button>';
+}
+
+function viewBatch(){
+  var b=getBatch();
+  var items=b.items.length?b.items.map(function(it,i){return itemCard(it,i);}).join('')
+    :'<div class="empty">还没有样品<br>点击下方按钮添加样品1</div>';
+  return '<div class="card" style="text-align:center">'
+    +'<div class="li-title">'+esc(b.name)+'</div>'
+    +'<div class="li-sub">共 '+b.items.length+' 个样品</div>'
+    +'<button class="btn btn-danger-ghost btn-block" data-action="delBatch" data-id="'+b.id+'">删除整个批次</button></div>'
+    +items
+    +'<button class="btn btn-primary btn-block" data-action="addItem">＋ 添加样品'+(b.items.length+1)+'</button>';
+}
+function itemCard(it,i){
+  var r=calcProb(it.checked);
+  var feats=['sound','style','orientation','itemType'].map(function(k){return it.checked[k];}).filter(Boolean);
+  var thumb;
+  if(it.checked.style&&it.checked.orientation){
+    thumb=renderGridThumb(it.checked);
+  }else if(it.checked.style){
+    thumb='<div class="grid-thumb-empty">未选横竖</div>';
+  }else{
+    thumb='<div class="grid-thumb-empty">未选样式</div>';
+  }
+  return '<div class="card list-item" data-action="openItem" data-id="'+it.id+'">'
+    +'<div class="li-main"><div class="li-title">样品'+(i+1)+'</div>'
+    +'<div class="li-sub">'+(feats.length?feats.join(' · '):'未勾选特征')+'</div>'
+    +'<div class="li-prob-line"><span class="prob-num'+(r.prob>0?'':' zero')+'">'+fmtProb(r.prob)+'</span>'
+    +'<span class="li-sub">匹配'+r.total+'·中奖'+r.wins+'</span></div></div>'
+    +thumb
+    +'<button class="btn btn-danger-ghost" data-action="delItem" data-id="'+it.id+'">删除</button></div>';
+}
+
+function viewItem(){
+  var it=getItem();
+  if(!it)return '';
+  var feats=[
+    {key:'sound',label:'声音',vals:chipVals('sounds',it.checked.sound)},
+    {key:'style',label:'样式',vals:chipVals('styles',it.checked.style)},
+    {key:'orientation',label:'横竖',vals:['横','竖']},
+    {key:'itemType',label:'物品类型（可不选）',vals:chipVals('itemTypes',it.checked.itemType)}
+  ];
+  var r=calcProb(it.checked);
+  var groups=feats.map(function(f){
+    return '<div class="feat-group"><div class="feat-label">'+f.label+'</div><div class="chips">'
+      +f.vals.map(function(v){
+        return '<button class="chip'+(it.checked[f.key]===v?' active':'')+'" data-action="toggleFeat" data-key="'+f.key+'" data-val="'+esc(v)+'">'+esc(v)+'</button>';
+      }).join('')+'</div></div>';
+  }).join('');
+  var grid;
+  if(it.checked.style&&it.checked.orientation){
+    grid=renderGrid(it.checked,fmtProb(r.prob));
+  }else if(it.checked.style){
+    grid='<div class="grid-hint">再选择「横竖」即可显示方格</div>';
+  }else{
+    grid='<div class="grid-hint">选择「样式」和「横竖」即可显示方格</div>';
+  }
+  return '<div class="card">'+groups+'</div>'
+    +'<div class="card result-card">'+grid
+    +'<div class="prob-num'+(r.prob>0?'':' zero')+'">'+fmtProb(r.prob)+'</div>'
+    +'<div class="li-sub">匹配 '+r.total+' 条 · 中奖 '+r.wins+' 条</div>'
+    +'<div class="hint">勾选即自动保存，返回后可在批次中查看</div></div>';
+}
+function renderGrid(checked,probStr){
+  var dims=String(checked.style).split('*').map(Number);
+  var cols=checked.orientation==='竖'?dims[0]:dims[1];
+  var rows=checked.orientation==='竖'?dims[1]:dims[0];
+  var cells='<div class="grid-cell"></div>'.repeat(cols*rows);
+  var mid='';
+  if(checked.itemType)mid+='<div class="gc-line">'+esc(checked.itemType)+'</div>';
+  if(checked.sound)mid+='<div class="gc-line">声音 '+esc(checked.sound)+'</div>';
+  mid+='<div class="gc-prob">'+probStr+'</div>';
+  return '<div class="grid-wrap"><div class="grid" style="grid-template-columns:repeat('+cols+',1fr)">'
+    +cells+'<div class="grid-center">'+mid+'</div></div></div>';
+}
+function renderGridThumb(checked){
+  var dims=String(checked.style).split('*').map(Number);
+  var cols=checked.orientation==='竖'?dims[0]:dims[1];
+  var rows=checked.orientation==='竖'?dims[1]:dims[0];
+  var cells='<div class="grid-cell"></div>'.repeat(cols*rows);
+  return '<div class="grid grid-thumb" style="grid-template-columns:repeat('+cols+',1fr)">'+cells+'</div>';
+}
+
+function viewLibrary(){
+  var n=store.samples.length;
+  var w=store.samples.filter(function(s){return s.win;}).length;
+  var list=n?store.samples.slice().reverse().map(function(s){
+    return '<div class="card list-item">'
+      +'<div class="li-main"><div class="li-title">'+esc(s.sound)+' · '+esc(s.style)+' · '+esc(s.orientation)+(s.itemType?' · '+esc(s.itemType):'')+'</div>'
+      +'<div class="li-sub"><span class="badge '+(s.win?'badge-win':'badge-lose')+'">'+(s.win?'✓ 中奖':'✗ 未中奖')+'</span></div></div>'
+      +'<button class="btn btn-ghost" data-action="editSample" data-id="'+s.id+'">编辑</button>'
+      +'<button class="btn btn-danger-ghost" data-action="delSample" data-id="'+s.id+'">删除</button></div>';
+  }).join(''):'<div class="empty">样本库还是空的<br>录入样本后，预测才会越来越准</div>';
+  return '<div class="card stats">共 '+n+' 条样本 · 中奖 '+w+' 条 · 总中奖率 '+fmtProb(n?w/n:0)+'</div>'
+    +list+'<button class="btn btn-primary btn-block" data-action="addSample">＋ 录入样本</button>';
+}
+
+function viewForm(){
+  if(!formState)formState={sound:null,style:null,orientation:null,itemType:null,win:null};
+  var cur=formState;
+  var groups=[
+    {key:'sound',label:'声音',vals:chipVals('sounds',cur.sound)},
+    {key:'style',label:'样式',vals:chipVals('styles',cur.style)},
+    {key:'orientation',label:'横竖',vals:['横','竖']},
+    {key:'itemType',label:'物品类型（可不选）',vals:chipVals('itemTypes',cur.itemType)},
+    {key:'win',label:'是否中奖',vals:['中奖','未中奖']}
+  ];
+  var html=groups.map(function(g){
+    return '<div class="feat-group"><div class="feat-label">'+g.label+'</div><div class="chips">'
+      +g.vals.map(function(v){
+        return '<button class="chip'+(cur[g.key]===v?' active':'')+'" data-action="formPick" data-key="'+g.key+'" data-val="'+esc(v)+'">'+esc(v)+'</button>';
+      }).join('')+'</div></div>';
+  }).join('');
+  return '<div class="card">'+html
+    +'<button class="btn btn-primary btn-block" data-action="saveSample">保存</button>'
+    +'<div class="hint center">声音、样式、横竖、是否中奖为必选，物品类型可不选</div></div>';
+}
+
+/* ================= 智能分析 ================= */
+function entropy(p){
+  if(p<=0||p>=1)return 0;
+  return -p*Math.log2(p)-(1-p)*Math.log2(1-p);
+}
+function infoGain(vals){
+  var total=0,wins=0;
+  vals.forEach(function(v){total+=v.n;wins+=v.w;});
+  var rem=0;
+  vals.forEach(function(v){rem+=v.n/total*entropy(v.rate);});
+  return entropy(wins/total)-rem;
+}
+function featureOrder(){
+  var feats=[{key:'sound',label:'声音'},{key:'style',label:'样式'},{key:'orientation',label:'横竖'},{key:'itemType',label:'物品类型'}];
+  var res=[];
+  feats.forEach(function(f){
+    var groups={};
+    store.samples.forEach(function(s){
+      var v=s[f.key]||'未填';
+      (groups[v]=groups[v]||[]).push(s);
+    });
+    var vals=Object.keys(groups).map(function(v){
+      var g=groups[v];
+      var w=g.filter(function(x){return x.win;}).length;
+      return {v:v,n:g.length,w:w,rate:w/g.length};
+    }).sort(function(a,b){return b.rate-a.rate||b.n-a.n;});
+    if(vals.length>1)res.push({key:f.key,label:f.label,ig:infoGain(vals),vals:vals});
+  });
+  /* 样式、横竖现场最好观察，固定优先；其余按区分度排序 */
+  var PRIORITY={style:0,orientation:1,sound:2,itemType:2};
+  res.sort(function(a,b){
+    if(PRIORITY[a.key]!==PRIORITY[b.key])return PRIORITY[a.key]-PRIORITY[b.key];
+    return b.ig-a.ig;
+  });
+  return res;
+}
+function genRules(){
+  var feats=['sound','style','orientation','itemType'];
+  var MIN=2;
+  var candidates=[];
+  feats.forEach(function(f){candidates.push([f]);});
+  for(var i=0;i<feats.length;i++){
+    for(var j=i+1;j<feats.length;j++){
+      candidates.push([feats[i],feats[j]]);
+      for(var k=j+1;k<feats.length;k++){
+        candidates.push([feats[i],feats[j],feats[k]]);
+      }
+    }
+  }
+  var win=[],lose=[];
+  candidates.forEach(function(keys){
+    var groups={};
+    store.samples.forEach(function(s){
+      var key=keys.map(function(k){return s[k]||'未填';}).join('\u0001');
+      (groups[key]=groups[key]||[]).push(s);
+    });
+    Object.keys(groups).forEach(function(key){
+      var g=groups[key];
+      if(g.length<MIN)return;
+      var w=g.filter(function(x){return x.win;}).length;
+      if(w===g.length||w===0){
+        var text=key.split('\u0001').join(' + ');
+        (w===g.length?win:lose).push({text:text,count:g.length,keys:keys.slice()});
+      }
+    });
+  });
+  win=dedupeRules(win);
+  lose=dedupeRules(lose);
+  /* 含样式/横竖的规律优先展示，其次按样本数排序 */
+  var sortFn=function(a,b){
+    var ap=(a.keys.indexOf('style')>=0||a.keys.indexOf('orientation')>=0)?0:1;
+    var bp=(b.keys.indexOf('style')>=0||b.keys.indexOf('orientation')>=0)?0:1;
+    if(ap!==bp)return ap-bp;
+    return b.count-a.count||b.keys.length-a.keys.length;
+  };
+  win.sort(sortFn);lose.sort(sortFn);
+  return {win:win.slice(0,8),lose:lose.slice(0,8)};
+}
+/* 去除冗余规律：若已有更短的特征组合是100%规律，则包含它的更长组合不再列出 */
+function dedupeRules(list){
+  var kept=[];
+  list.slice().sort(function(a,b){return a.keys.length-b.keys.length||b.count-a.count;}).forEach(function(r){
+    var sub=kept.some(function(k){
+      return k.keys.every(function(x){return r.keys.indexOf(x)>=0;});
+    });
+    if(!sub)kept.push(r);
+  });
+  return kept;
+}
+function viewAnalysis(){
+  var n=store.samples.length;
+  if(!n)return '<div class="empty">样本库还是空的<br>录入样本后，这里会自动分析规律</div>';
+  var w=store.samples.filter(function(s){return s.win;}).length;
+  var rules=genRules();
+  var html='<div class="card stats">共 '+n+' 条样本 · 总中奖率 '+fmtProb(n?w/n:0)+'</div>';
+  html+='<div class="card"><div class="li-title" style="margin-bottom:2px">🎯 一定中奖</div>'
+    +(rules.win.length?rules.win.map(function(r){
+      return '<div class="rule-item win"><div class="rule-text">'+esc(r.text)+'</div><div class="rule-count">样本'+r.count+'条</div></div>';
+    }).join(''):'<div class="li-sub" style="margin-top:8px">暂未发现样本数≥2的必中规律</div>')
+    +'</div>';
+  html+='<div class="card"><div class="li-title" style="margin-bottom:2px">🚫 一定不中奖</div>'
+    +(rules.lose.length?rules.lose.map(function(r){
+      return '<div class="rule-item lose"><div class="rule-text">'+esc(r.text)+'</div><div class="rule-count">样本'+r.count+'条</div></div>';
+    }).join(''):'<div class="li-sub" style="margin-top:8px">暂未发现样本数≥2的必不中规律</div>')
+    +'</div>';
+  var order=featureOrder();
+  html+='<div class="card"><div class="li-title" style="margin-bottom:2px">🧭 建议判断顺序</div>'
+    +(order.length?order.map(function(o,i){
+      return '<div class="order-item"><div class="order-head"><span class="order-num">'+(i+1)+'</span>先判断：'+o.label+'</div>'
+        +'<div class="order-vals">'+o.vals.map(function(v){
+          return '<span class="order-val"><b>'+esc(v.v)+'</b> '+fmtProb(v.rate)+'（'+v.w+'/'+v.n+'）</span>';
+        }).join('')+'</div></div>';
+    }).join(''):'<div class="li-sub" style="margin-top:8px">各特征中奖率相近，暂无明显规律，建议多录样本</div>')
+    +'</div>';
+  html+='<div class="hint center">规律基于现有样本库自动计算，样本越多越准 · 仅供辅助参考</div>';
+  return html;
+}
+
+function viewSettings(){
+  var groups=[
+    {key:'sounds',label:'声音选项'},
+    {key:'styles',label:'样式选项'},
+    {key:'itemTypes',label:'物品类型选项'}
+  ];
+  var blocks=groups.map(function(g){
+    var chips=store.presets[g.key].map(function(v){
+      return '<span class="chip chip-static">'+esc(v)+'<button class="chip-x" data-action="delPreset" data-group="'+g.key+'" data-val="'+esc(v)+'">×</button></span>';
+    }).join('');
+    return '<div class="card"><div class="li-title">'+g.label+'</div>'
+      +'<div class="chips" style="margin-top:8px">'+chips+'</div>'
+      +'<div class="add-row"><input id="inp-'+g.key+'" class="input" placeholder="输入新选项"><button class="btn btn-primary" data-action="addPreset" data-group="'+g.key+'">添加</button></div></div>';
+  }).join('');
+  return blocks
+    +'<div class="card"><div class="li-title" style="margin-bottom:8px">数据备份</div>'
+    +'<button class="btn btn-ghost btn-block" data-action="exportData">导出数据（生成备份文件）</button>'
+    +'<button class="btn btn-ghost btn-block" data-action="importData">导入数据（从备份恢复）</button>'
+    +'<div class="hint center" style="margin-top:6px">换手机或换网址时：旧地址导出 → 新地址导入</div></div>'
+    +'<div class="card"><div class="li-title" style="margin-bottom:8px">数据管理</div>'
+    +'<button class="btn btn-ghost btn-block" data-action="clearBatches">清空全部批次</button>'
+    +'<button class="btn btn-ghost btn-block" data-action="clearSamples">清空样本库</button>'
+    +'<button class="btn btn-danger-ghost btn-block" data-action="resetAll">重置所有数据（含选项）</button></div>'
+    +'<div class="hint center">数据保存在本机浏览器中，清除浏览器数据会丢失</div>';
+}
+
+/* ================= 弹窗 ================= */
+function showModalBackdrop(){document.getElementById('modalBackdrop').classList.remove('hidden');}
+function hideModal(){document.getElementById('modalBackdrop').classList.add('hidden');modalCb=null;}
+function promptModal(title,placeholder,def,onOk){
+  modalCb=function(){
+    var v=document.getElementById('modalInput').value.trim()||def;
+    onOk(v);
+  };
+  document.getElementById('modalBox').innerHTML=
+    '<div class="modal-title">'+esc(title)+'</div>'
+    +'<input id="modalInput" class="input" placeholder="'+esc(placeholder)+'" value="'+esc(def)+'">'
+    +'<div class="modal-btns"><button class="btn btn-ghost" data-action="modalCancel">取消</button>'
+    +'<button class="btn btn-primary" data-action="modalOk">确定</button></div>';
+  showModalBackdrop();
+  document.getElementById('modalInput').focus();
+}
+function confirmModal(title,msg,onOk){
+  modalCb=onOk;
+  document.getElementById('modalBox').innerHTML=
+    '<div class="modal-title">'+esc(title)+'</div>'
+    +'<div class="modal-msg">'+esc(msg)+'</div>'
+    +'<div class="modal-btns"><button class="btn btn-ghost" data-action="modalCancel">取消</button>'
+    +'<button class="btn btn-danger" data-action="modalOk">确定</button></div>';
+  showModalBackdrop();
+}
+
+/* ================= 提示条 ================= */
+var toastTimer=null;
+function toast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){t.classList.remove('show');},1800);
+}
+
+/* ================= 表单流程 ================= */
+function openForm(editId){
+  view={name:'form',editSampleId:editId};
+  var s=editId?store.samples.find(function(x){return x.id===editId;}):null;
+  formState=s?{sound:s.sound,style:s.style,orientation:s.orientation,itemType:s.itemType,win:s.win?'中奖':'未中奖'}
+    :{sound:null,style:null,orientation:null,itemType:null,win:null};
+  render();
+}
+function saveSample(){
+  var f=formState;
+  if(!f.sound||!f.style||!f.orientation||!f.win){toast('请先选好声音、样式、横竖、是否中奖');return;}
+  var data={sound:f.sound,style:f.style,orientation:f.orientation,itemType:f.itemType||null,win:f.win==='中奖'};
+  if(view.editSampleId){
+    var s=store.samples.find(function(x){return x.id===view.editSampleId;});
+    if(s){Object.assign(s,data);toast('已保存修改');}
+  }else{
+    store.samples.push(Object.assign({id:uid('s')},data));
+    toast('已录入样本库');
+  }
+  saveStore();
+  view={name:'library',editSampleId:null};
+  render();
+}
+
+/* ================= 数据备份 ================= */
+function parseBackup(text){
+  var d=JSON.parse(text);
+  if(!d||!Array.isArray(d.samples)||!Array.isArray(d.batches))throw new Error('bad');
+  return {presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),samples:d.samples,batches:d.batches};
+}
+function exportData(){
+  var blob=new Blob([JSON.stringify(store,null,2)],{type:'application/json'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  a.download='lucky-app-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},1000);
+  toast('已导出备份文件');
+}
+function importData(file){
+  var reader=new FileReader();
+  reader.onload=function(){
+    try{
+      store=parseBackup(reader.result);
+      saveStore();
+      render();
+      toast('导入成功');
+    }catch(e){
+      toast('导入失败：文件格式不正确');
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ================= 事件处理 ================= */
+app.addEventListener('click',function(e){
+  var el=e.target.closest('[data-action]');
+  if(!el)return;
+  var a=el.dataset.action;
+  if(a==='openBatch'){view={name:'batch',batchId:el.dataset.id};render();}
+  else if(a==='addBatch'){
+    promptModal('新建批次','给这个批次起个名字','批次'+(store.batches.length+1),function(name){
+      var nb={id:uid('b'),name:name,createdAt:Date.now(),items:[]};
+      store.batches.push(nb);
+      saveStore();
+      view={name:'batch',batchId:nb.id};
+      render();
+      toast('已创建批次');
+    });
+  }
+  else if(a==='delBatch'){
+    var bd=store.batches.find(function(b){return b.id===el.dataset.id;});
+    if(!bd)return;
+    confirmModal('删除批次','确定删除「'+bd.name+'」吗？批次下所有样品将一并删除',function(){
+      store.batches=store.batches.filter(function(b){return b.id!==bd.id;});
+      saveStore();view={name:'batches'};render();toast('已删除批次');
+    });
+  }
+  else if(a==='openItem'){view={name:'item',batchId:view.batchId,itemId:el.dataset.id};render();}
+  else if(a==='addItem'){
+    var b=getBatch();
+    var it={id:uid('i'),checked:{sound:null,style:null,orientation:null,itemType:null}};
+    b.items.push(it);
+    saveStore();
+    view={name:'item',batchId:b.id,itemId:it.id};
+    render();
+  }
+  else if(a==='delItem'){
+    confirmModal('删除样品','确定删除这个样品吗？',function(){
+      var b=getBatch();
+      b.items=b.items.filter(function(i){return i.id!==el.dataset.id;});
+      saveStore();render();toast('已删除样品');
+    });
+  }
+  else if(a==='toggleFeat'){
+    var itg=getItem();
+    var k=el.dataset.key,v=el.dataset.val;
+    itg.checked[k]=(itg.checked[k]===v?null:v);
+    saveStore();render();
+  }
+  else if(a==='addSample'){openForm(null);}
+  else if(a==='editSample'){openForm(el.dataset.id);}
+  else if(a==='delSample'){
+    confirmModal('删除样本','确定从样本库删除这条样本吗？',function(){
+      store.samples=store.samples.filter(function(s){return s.id!==el.dataset.id;});
+      saveStore();render();toast('已删除');
+    });
+  }
+  else if(a==='formPick'){
+    var k2=el.dataset.key,v2=el.dataset.val;
+    formState[k2]=(formState[k2]===v2?null:v2);
+    render();
+  }
+  else if(a==='saveSample'){saveSample();}
+  else if(a==='exportData'){exportData();}
+  else if(a==='importData'){
+    confirmModal('导入数据','导入会用备份文件覆盖当前所有数据，确定吗？',function(){
+      document.getElementById('importFile').click();
+    });
+  }
+  else if(a==='addPreset'){
+    var g=el.dataset.group;
+    var inp=document.getElementById('inp-'+g);
+    var v=inp.value.trim();
+    if(!v){toast('请输入选项内容');return;}
+    if(store.presets[g].indexOf(v)>=0){toast('该选项已存在');return;}
+    store.presets[g].push(v);
+    inp.value='';saveStore();render();toast('已添加');
+  }
+  else if(a==='delPreset'){
+    var g2=el.dataset.group,val=el.dataset.val;
+    confirmModal('删除选项','确定删除选项「'+val+'」吗？',function(){
+      store.presets[g2]=store.presets[g2].filter(function(v){return v!==val;});
+      saveStore();render();toast('已删除');
+    });
+  }
+  else if(a==='clearBatches'){
+    confirmModal('清空批次','确定删除全部批次吗？样本库不受影响',function(){
+      store.batches=[];saveStore();render();toast('已清空批次');
+    });
+  }
+  else if(a==='clearSamples'){
+    confirmModal('清空样本库','确定删除样本库全部样本吗？',function(){
+      store.samples=[];saveStore();render();toast('已清空样本库');
+    });
+  }
+  else if(a==='resetAll'){
+    confirmModal('重置所有数据','确定删除所有数据并恢复默认选项吗？此操作不可恢复',function(){
+      store={presets:Object.assign({},DEFAULT_PRESETS),samples:[],batches:[]};
+      saveStore();render();toast('已重置');
+    });
+  }
+});
+document.getElementById('modalBackdrop').addEventListener('click',function(e){
+  if(e.target.id==='modalBackdrop'){hideModal();return;}
+  var el=e.target.closest('[data-action]');
+  if(!el)return;
+  if(el.dataset.action==='modalCancel'){hideModal();}
+  else if(el.dataset.action==='modalOk'){var cb=modalCb;hideModal();if(cb)cb();}
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&!document.getElementById('modalBackdrop').classList.contains('hidden')){
+    var el=document.querySelector('#modalBox [data-action="modalOk"]');
+    if(el)el.click();
+  }
+});
+document.getElementById('importFile').addEventListener('change',function(e){
+  if(e.target.files&&e.target.files[0])importData(e.target.files[0]);
+  e.target.value='';
+});
+document.getElementById('backBtn').addEventListener('click',function(){
+  if(view.name==='batch'){view={name:'batches'};}
+  else if(view.name==='item'){view={name:'batch',batchId:view.batchId};}
+  else if(view.name==='form'){view={name:'library',editSampleId:null};}
+  render();
+});
+document.querySelectorAll('.tabbar button').forEach(function(b){
+  b.addEventListener('click',function(){
+    view={name:b.dataset.tab};
+    render();
+  });
+});
+
+/* ================= 注册 Service Worker（PWA 离线支持） ================= */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('./sw.js').catch(function(err){console.warn('SW注册失败：',err);});
+  });
+}
+
+render();
+</script>
+</body>
+</html>
