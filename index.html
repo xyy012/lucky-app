@@ -604,9 +604,16 @@ function b64decode(s){
   return new TextDecoder().decode(bytes);
 }
 function ghApi(path,opts){
-  return fetch('https://api.github.com/repos/'+DATA_REPO+'/contents/'+path,Object.assign({
+  opts=opts||{};
+  var ctrl=new AbortController();
+  var timer=setTimeout(function(){ctrl.abort();},15000);
+  opts.signal=ctrl.signal;
+  var p=fetch('https://api.github.com/repos/'+DATA_REPO+'/contents/'+path,Object.assign({
     headers:{'Authorization':'Bearer '+getToken(),'Accept':'application/vnd.github+json'}
   },opts));
+  /* 用两参数 then 清理定时器，避免产生未处理的 rejection */
+  p.then(function(){clearTimeout(timer);},function(){clearTimeout(timer);});
+  return p;
 }
 function fetchRemote(){
   return ghApi(DATA_PATH,{method:'GET'}).then(function(r){
@@ -668,7 +675,8 @@ function syncNow(manual){
     if(manual)toast('两端数据已是最新');
     return true;
   }).catch(function(e){
-    if(manual)toast('同步失败：'+e.message+'（检查网络或密钥）');
+    var msg=(e.name==='AbortError')?'网络超时（15秒无响应）':e.message;
+    if(manual)toast('同步失败：'+msg+'（检查网络或密钥）');
     return false;
   });
 }
@@ -750,7 +758,7 @@ app.addEventListener('click',function(e){
     setToken(tv);
     render();
     toast('密钥已保存，正在同步…');
-    syncNow(false);
+    syncNow(true);
   }
   else if(a==='clearToken'){
     confirmModal('清除密钥','清除后将停止云同步，数据不受影响。确定吗？',function(){

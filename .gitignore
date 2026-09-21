@@ -1,1 +1,6 @@
 serve.js
+_app_check.js
+_combined*.js
+_tsync_*.js
+_tlogic_*.js
+_test.js
