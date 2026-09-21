@@ -614,18 +614,29 @@ function ghApi(path,opts){
   opts=opts||{};
   var ctrl=new AbortController();
   var timer=setTimeout(function(){ctrl.abort();},15000);
-  opts.signal=ctrl.signal;
-  var p=fetch('https://api.github.com/repos/'+DATA_REPO+'/contents/'+path,Object.assign({
-    headers:{'Authorization':'Bearer '+getToken(),'Accept':'application/vnd.github+json'}
-  },opts));
+  var init=Object.assign({},opts);
+  /* 合并请求头，避免 opts.headers 覆盖掉认证头 */
+  init.headers=Object.assign({'Authorization':'Bearer '+getToken(),'Accept':'application/vnd.github+json'},opts.headers||{});
+  init.signal=ctrl.signal;
+  init.cache='no-store';
+  /* 带时间戳参数：让每次请求都是全新网址，任何缓存层都无法返回过期结果。
+     （曾因此拿到缓存的 404，误以为云端没有文件，上传缺 sha 报 422） */
+  var url='https://api.github.com/repos/'+DATA_REPO+'/contents/'+path+'?_='+Date.now();
+  var p=fetch(url,init);
   /* 用两参数 then 清理定时器，避免产生未处理的 rejection */
   p.then(function(){clearTimeout(timer);},function(){clearTimeout(timer);});
   return p;
 }
+/* 取出 GitHub 返回的错误说明，便于用户看懂失败原因 */
+function ghError(r){
+  return r.json().then(function(j){
+    return (j&&j.message)?String(j.message).replace(/\s+/g,' ').slice(0,60):'';
+  },function(){return '';});
+}
 function fetchRemote(){
   return ghApi(DATA_PATH,{method:'GET'}).then(function(r){
     if(r.status===404)return null;
-    if(!r.ok)throw new Error('拉取失败('+r.status+')');
+    if(!r.ok)return ghError(r).then(function(d){throw new Error('拉取失败('+r.status+(d?'：'+d:'')+')');});
     return r.json().then(function(j){
       return {data:JSON.parse(b64decode(j.content)),sha:j.sha};
     });
@@ -634,8 +645,24 @@ function fetchRemote(){
 function putRemote(obj,sha){
   var body={message:'sync',content:b64encode(JSON.stringify(obj))};
   if(sha)body.sha=sha;
-  return ghApi(DATA_PATH,{method:'PUT',body:JSON.stringify(body)}).then(function(r){
-    if(!r.ok)throw new Error('上传失败('+r.status+')');
+  return ghApi(DATA_PATH,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){
+    if(r.ok)return;
+    return ghError(r).then(function(d){throw new Error('上传失败('+r.status+(d?'：'+d:'')+')');});
+  });
+}
+/* 上传本地数据。返回 'pushed' | 'remote-newer'
+   若因缺少 sha 被拒（422），说明本地拿到的云端状态过期了（例如被缓存成"云端无文件"），
+   此时重新拉取取最新 sha 重新判断；若云端其实更新则不覆盖，交给拉取 */
+function uploadIfNewer(remote){
+  var doPut=function(sha){
+    return putRemote(store,sha).then(function(){setLastSync('已上传');return 'pushed';});
+  };
+  return doPut(remote?remote.sha:null).catch(function(e){
+    if(!/\(422/.test(e.message))throw e;
+    return fetchRemote().then(function(fresh){
+      if(!fresh||remoteIsNewer(fresh)||sameAsRemote(fresh))return 'remote-newer';
+      return doPut(fresh.sha);
+    });
   });
 }
 /* 数据量体重：样本数 + 批次数 + 批内样品数。
@@ -657,11 +684,13 @@ function remoteIsNewer(remote){
 function sameAsRemote(remote){
   return !!remote&&(remote.data.updatedAt||0)===(store.updatedAt||0)&&storeWeight(remote.data)===storeWeight(store);
 }
-/* 把本地数据推送到云端（若本地更新） */
+/* 改动后自动上传：只上传，绝不用云端覆盖本地刚改的数据 */
 function pushLocal(){
   return fetchRemote().then(function(remote){
     if(remoteIsNewer(remote)||sameAsRemote(remote)){setLastSync('已是最新');return;}
-    return putRemote(store,remote?remote.sha:null).then(function(){setLastSync('已上传');});
+    return uploadIfNewer(remote).then(function(res){
+      if(res==='remote-newer')setLastSync('已是最新');
+    });
   });
 }
 /* 改动后3秒自动上传 */
@@ -672,31 +701,35 @@ function scheduleUpload(){
     pushLocal().catch(function(){return pushLocal();}).catch(function(){});
   },3000);
 }
-/* 手动同步：按修改时间取较新的一方 */
-function syncNow(manual){
-  var t=getToken();
-  if(!t){if(manual)toast('请先在下方粘贴并保存 GitHub 密钥');return Promise.resolve(false);}
+/* 执行一次同步。返回 'pulled' | 'pushed' | 'same' */
+function syncOnce(depth){
+  depth=depth||0;
   return fetchRemote().then(function(remote){
     if(remoteIsNewer(remote)){
       var d=remote.data;
       store={presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),samples:Array.isArray(d.samples)?d.samples:[],batches:Array.isArray(d.batches)?d.batches:[],updatedAt:d.updatedAt||0};
       persistStore();
-      render();
       setLastSync('已拉取云端数据');
-      if(manual)toast('已从云端拉取最新数据');
-      return true;
+      return 'pulled';
     }
-    if(!sameAsRemote(remote)){
-      return putRemote(store,remote?remote.sha:null).then(function(){
-        setLastSync('已上传');
-        render();
-        if(manual)toast('已上传本地数据到云端');
-        return true;
-      });
-    }
-    setLastSync('已是最新');
+    if(sameAsRemote(remote)){setLastSync('已是最新');return 'same';}
+    return uploadIfNewer(remote).then(function(res){
+      if(res!=='remote-newer')return 'pushed';
+      /* 上传时发现云端其实更新（本地状态过期）→ 重新判断一次，改为拉取。
+         加 depth 只重试一层，避免异常时来回打转 */
+      if(depth)return 'same';
+      return syncOnce(depth+1);
+    });
+  });
+}
+/* 手动同步：按修改时间取较新的一方 */
+function syncNow(manual){
+  var t=getToken();
+  if(!t){if(manual)toast('请先在下方粘贴并保存 GitHub 密钥');return Promise.resolve(false);}
+  return syncOnce().then(function(res){
     render();
-    if(manual)toast('两端数据已是最新');
+    if(!manual)return true;
+    toast(res==='pulled'?'已从云端拉取最新数据':(res==='pushed'?'已上传本地数据到云端':'两端数据已是最新'));
     return true;
   }).catch(function(e){
     var msg=(e.name==='AbortError')?'网络超时（15秒无响应）':e.message;
@@ -860,7 +893,10 @@ document.querySelectorAll('.tabbar button').forEach(function(b){
 /* ================= 注册 Service Worker（PWA 离线支持） ================= */
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
-    navigator.serviceWorker.register('./sw.js').catch(function(err){console.warn('SW注册失败：',err);});
+    /* updateViaCache:'none' + 主动 update()：确保新版本立即生效，不被浏览器缓存挡住 */
+    navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(function(reg){
+      reg.update().catch(function(){});
+    }).catch(function(err){console.warn('SW注册失败：',err);});
   });
 }
 
