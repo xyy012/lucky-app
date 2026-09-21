@@ -584,13 +584,20 @@ function importData(file){
 /* ================= 云同步 ================= */
 var TOKEN_KEY='luckyApp.token';
 var LASTSYNC_KEY='luckyApp.lastSync';
+var LASTSYNC_MSG_KEY='luckyApp.lastSyncMsg';
 var DATA_REPO='xyy012/lucky-app-data';
 var DATA_PATH='data.json';
 var uploadTimer=null;
 function getToken(){try{return localStorage.getItem(TOKEN_KEY)||'';}catch(e){return '';}}
 function setToken(t){try{localStorage.setItem(TOKEN_KEY,t);}catch(e){}}
 function clearToken(){try{localStorage.removeItem(TOKEN_KEY);}catch(e){}}
-function setLastSync(){try{localStorage.setItem(LASTSYNC_KEY,String(Date.now()));}catch(e){}}
+/* 记录同步结果：时间 + 结果文字，供设置页长期显示（提示条会消失，这里不会） */
+function setLastSync(msg){
+  try{
+    localStorage.setItem(LASTSYNC_KEY,String(Date.now()));
+    if(msg)localStorage.setItem(LASTSYNC_MSG_KEY,msg);
+  }catch(e){}
+}
 function b64encode(s){
   var bytes=new TextEncoder().encode(s);
   var bin='';
@@ -653,8 +660,8 @@ function sameAsRemote(remote){
 /* 把本地数据推送到云端（若本地更新） */
 function pushLocal(){
   return fetchRemote().then(function(remote){
-    if(remoteIsNewer(remote)||sameAsRemote(remote)){setLastSync();return;}
-    return putRemote(store,remote?remote.sha:null).then(setLastSync);
+    if(remoteIsNewer(remote)||sameAsRemote(remote)){setLastSync('已是最新');return;}
+    return putRemote(store,remote?remote.sha:null).then(function(){setLastSync('已上传');});
   });
 }
 /* 改动后3秒自动上传 */
@@ -675,22 +682,26 @@ function syncNow(manual){
       store={presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),samples:Array.isArray(d.samples)?d.samples:[],batches:Array.isArray(d.batches)?d.batches:[],updatedAt:d.updatedAt||0};
       persistStore();
       render();
-      setLastSync();
+      setLastSync('已拉取云端数据');
       if(manual)toast('已从云端拉取最新数据');
       return true;
     }
     if(!sameAsRemote(remote)){
       return putRemote(store,remote?remote.sha:null).then(function(){
-        setLastSync();
+        setLastSync('已上传');
+        render();
         if(manual)toast('已上传本地数据到云端');
         return true;
       });
     }
-    setLastSync();
+    setLastSync('已是最新');
+    render();
     if(manual)toast('两端数据已是最新');
     return true;
   }).catch(function(e){
     var msg=(e.name==='AbortError')?'网络超时（15秒无响应）':e.message;
+    setLastSync('失败：'+msg);
+    render();
     if(manual)toast('同步失败：'+msg+'（检查网络或密钥）');
     return false;
   });
@@ -698,7 +709,9 @@ function syncNow(manual){
 function syncStatusLine(){
   if(!getToken())return '状态：未配置（需在 GitHub 生成密钥）';
   var ls=localStorage.getItem(LASTSYNC_KEY);
-  return '状态：已配置 · 上次同步 '+(ls?fmtTime(Number(ls)):'尚未同步');
+  var msg=localStorage.getItem(LASTSYNC_MSG_KEY);
+  if(!ls)return '状态：已配置 · 尚未同步过';
+  return '状态：'+fmtTime(Number(ls))+(msg?' · '+esc(msg):'');
 }
 
 /* ================= 事件处理 ================= */
