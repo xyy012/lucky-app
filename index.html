@@ -620,6 +620,17 @@ function recCount(){return Object.keys(recs()).length;}
 function recTotalChars(){var t=0;var r=recs();Object.keys(r).forEach(function(k){t+=String((r[k]||{}).d||'').length;});return t;}
 function recSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);}
 
+/* 选到声音就自动播放（可在录音面板里关掉），设置只存在本机不参与同步 */
+var AUTOPLAY_KEY='luckyApp.autoplay';
+function autoPlayOn(){try{return localStorage.getItem(AUTOPLAY_KEY)!=='0';}catch(e){return true;}}
+function setAutoPlay(on){try{localStorage.setItem(AUTOPLAY_KEY,on?'1':'0');}catch(e){}}
+function autoPlaySound(sound){
+  if(autoPlayOn()&&hasRec(sound))playRec(sound);
+}
+/* 选到有录音的声音就自动播放 */
+function autoPlaySound(sound){
+  if(hasRec(sound))playRec(sound);
+}
 function playRec(sound){
   var r=recs()[sound];
   if(!r){toast('「'+sound+'」还没有录音');return;}
@@ -1091,6 +1102,7 @@ app.addEventListener('click',function(e){
     var k=el.dataset.key,v=el.dataset.val;
     itg.checked[k]=(itg.checked[k]===v?null:v);
     saveStore();render();
+    if(k==='sound'&&itg.checked[k]===v)autoPlaySound(v);   /* 选中声音就放出来 */
   }
   else if(a==='addSample'){openForm(null);}
   else if(a==='editSample'){openForm(el.dataset.id);}
@@ -1133,6 +1145,7 @@ app.addEventListener('click',function(e){
     var k2=el.dataset.key,v2=el.dataset.val;
     formState[k2]=(formState[k2]===v2?null:v2);
     render();
+    if(k2==='sound'&&formState[k2]===v2)autoPlaySound(v2);   /* 选中声音就放出来 */
   }
   else if(a==='saveSample'){saveSample();}
   else if(a==='exportData'){exportData();}
