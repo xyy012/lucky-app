@@ -52,6 +52,17 @@ main{padding:14px;max-width:560px;margin:0 auto;}
 .chip{display:inline-flex;align-items:center;gap:6px;background:var(--green-50);border:1.5px solid var(--green-200);color:var(--text);border-radius:20px;padding:7px 14px;font-size:14px;cursor:pointer;}
 .chip.active{background:var(--green-500);border-color:var(--green-500);color:#fff;font-weight:600;}
 .chip-static{padding:5px 10px;font-size:13px;}
+/* 录音 */
+.chip-play{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;background:rgba(0,0,0,.10);font-size:10px;line-height:1;}
+.chip.active .chip-play{background:rgba(255,255,255,.30);}
+.rec-entry{margin-top:8px;}
+.rec-card{margin-top:12px;padding:12px;border:1.5px dashed var(--green-300);border-radius:12px;background:var(--green-50);}
+.rec-status{font-size:13.5px;color:var(--text);margin:10px 0 8px;min-height:20px;}
+.rec-actions{display:flex;flex-wrap:wrap;gap:8px;}
+.rec-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--danger);margin-right:6px;animation:recblink 1s infinite;}
+@keyframes recblink{0%,100%{opacity:1}50%{opacity:.25}}
+.rec-warn{margin-top:8px;font-size:12.5px;color:var(--danger);background:var(--danger-bg);padding:7px 10px;border-radius:8px;}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
 .chip-x{border:none;background:rgba(0,0,0,.08);color:inherit;border-radius:50%;width:18px;height:18px;line-height:1;font-size:13px;padding:0;cursor:pointer;}
 /* 方格 */
 .grid-wrap{display:flex;justify-content:center;margin:10px 0;}
@@ -149,11 +160,12 @@ function loadStore(){
         presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),
         samples:Array.isArray(d.samples)?d.samples:[],
         batches:Array.isArray(d.batches)?d.batches:[],
+        recordings:(d.recordings&&typeof d.recordings==='object')?d.recordings:{},
         updatedAt:typeof d.updatedAt==='number'?d.updatedAt:0
       };
     }
   }catch(e){console.warn(e);}
-  return {presets:Object.assign({},DEFAULT_PRESETS),samples:[],batches:[],updatedAt:0};
+  return {presets:Object.assign({},DEFAULT_PRESETS),samples:[],batches:[],recordings:{},updatedAt:0};
 }
 function persistStore(){
   try{localStorage.setItem(LS_KEY,JSON.stringify(store));}
@@ -265,11 +277,12 @@ function viewItem(){
   ];
   var r=calcProb(it.checked);
   var groups=feats.map(function(f){
+    var isSound=(f.key==='sound');
     return '<div class="feat-group"><div class="feat-label">'+f.label+'</div><div class="chips">'
       +f.vals.map(function(v){
-        return '<button class="chip'+(it.checked[f.key]===v?' active':'')+'" data-action="toggleFeat" data-key="'+f.key+'" data-val="'+esc(v)+'">'+esc(v)+'</button>';
-      }).join('')+'</div></div>';
-  }).join('');
+        return '<button class="chip'+(it.checked[f.key]===v?' active':'')+'" data-action="toggleFeat" data-key="'+f.key+'" data-val="'+esc(v)+'">'+esc(v)+(isSound?recChipPlay(v):'')+'</button>';
+      }).join('')+'</div>'+(isSound?recEntry():'')+'</div>';
+  }).join('')+recCard();
   var grid;
   if(it.checked.style&&it.checked.orientation){
     grid=renderGrid(it.checked,fmtProb(r.prob));
@@ -311,6 +324,7 @@ function viewLibrary(){
     return '<div class="card list-item">'
       +'<div class="li-main"><div class="li-title">'+esc(s.sound)+' · '+esc(s.style)+' · '+esc(s.orientation)+(s.itemType?' · '+esc(s.itemType):'')+'</div>'
       +'<div class="li-sub"><span class="badge '+(s.win?'badge-win':'badge-lose')+'">'+(s.win?'✓ 中奖':'✗ 未中奖')+'</span></div></div>'
+      +(hasRec(s.sound)?'<button class="btn btn-ghost" data-action="playRec" data-val="'+esc(s.sound)+'">▶</button>':'')
       +'<button class="btn btn-ghost" data-action="editSample" data-id="'+s.id+'">编辑</button>'
       +'<button class="btn btn-danger-ghost" data-action="delSample" data-id="'+s.id+'">删除</button></div>';
   }).join(''):'<div class="empty">样本库还是空的<br>录入样本后，预测才会越来越准</div>';
@@ -329,11 +343,12 @@ function viewForm(){
     {key:'win',label:'是否中奖',vals:['中奖','未中奖']}
   ];
   var html=groups.map(function(g){
+    var isSound=(g.key==='sound');
     return '<div class="feat-group"><div class="feat-label">'+g.label+'</div><div class="chips">'
       +g.vals.map(function(v){
-        return '<button class="chip'+(cur[g.key]===v?' active':'')+'" data-action="formPick" data-key="'+g.key+'" data-val="'+esc(v)+'">'+esc(v)+'</button>';
-      }).join('')+'</div></div>';
-  }).join('');
+        return '<button class="chip'+(cur[g.key]===v?' active':'')+'" data-action="formPick" data-key="'+g.key+'" data-val="'+esc(v)+'">'+esc(v)+(isSound?recChipPlay(v):'')+'</button>';
+      }).join('')+'</div>'+(isSound?recEntry():'')+'</div>';
+  }).join('')+recCard();
   return '<div class="card">'+html
     +'<button class="btn btn-primary btn-block" data-action="saveSample">保存</button>'
     +'<div class="hint center">声音、样式、横竖、是否中奖为必选，物品类型可不选</div></div>';
@@ -552,7 +567,8 @@ function saveSample(){
 function parseBackup(text){
   var d=JSON.parse(text);
   if(!d||!Array.isArray(d.samples)||!Array.isArray(d.batches))throw new Error('bad');
-  return {presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),samples:d.samples,batches:d.batches};
+  return {presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),samples:d.samples,batches:d.batches,
+    recordings:(d.recordings&&typeof d.recordings==='object')?d.recordings:{}};
 }
 function exportData(){
   var blob=new Blob([JSON.stringify(store,null,2)],{type:'application/json'});
@@ -579,6 +595,132 @@ function importData(file){
     }
   };
   reader.readAsText(file);
+}
+
+/* ================= 云同步 ================= */
+/* ================= 声音录音 =================
+   录音按"声音名"保存，任何一个样本/样品选了该声音都能播放试听。
+   录音存在 store.recordings 里，因此会自动跟着云同步走。 */
+var REC_MAX_MS=5000;          /* 单条录音最长时长 */
+var REC_TOTAL_WARN=400000;    /* 录音总量提醒阈值（字符数，约 300KB 音频） */
+var recOpen=false;            /* 录音面板是否展开 */
+var recTarget=null;           /* 当前为哪个声音录音/试听 */
+var recState='idle';          /* idle | recording */
+var mediaRec=null,recChunks=[],recStream=null,recTimer=null,recTick=null,recStartTs=0;
+var curAudio=null;
+
+function recs(){if(!store.recordings)store.recordings={};return store.recordings;}
+function hasRec(sound){return !!(sound&&recs()[sound]);}
+function recCount(){return Object.keys(recs()).length;}
+function recTotalChars(){var t=0;var r=recs();Object.keys(r).forEach(function(k){t+=String((r[k]||{}).d||'').length;});return t;}
+function recSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);}
+
+function playRec(sound){
+  var r=recs()[sound];
+  if(!r){toast('「'+sound+'」还没有录音');return;}
+  try{
+    if(curAudio){try{curAudio.pause();}catch(e){}}
+    curAudio=new Audio(r.d);
+    var p=curAudio.play();
+    if(p&&p.catch)p.catch(function(e){toast('播放失败：'+e.message);});
+  }catch(e){toast('播放失败：'+e.message);}
+}
+function startRec(sound){
+  if(!recSupported()){toast('这个浏览器不支持录音，请用手机自带浏览器打开本网址');return;}
+  navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+    recStream=stream;
+    recChunks=[];
+    recTarget=sound;
+    var MR=window.MediaRecorder;
+    var opts={audioBitsPerSecond:16000};
+    var mime='audio/webm;codecs=opus';
+    try{
+      mediaRec=(MR.isTypeSupported&&MR.isTypeSupported(mime))
+        ?new MR(stream,Object.assign({mimeType:mime},opts))
+        :new MR(stream,opts);
+    }catch(e){mediaRec=new MR(stream);}
+    mediaRec.ondataavailable=function(e){if(e.data&&e.data.size)recChunks.push(e.data);};
+    mediaRec.onstop=saveRec;
+    mediaRec.start();
+    recStartTs=Date.now();
+    recState='recording';
+    recTimer=setTimeout(stopRec,REC_MAX_MS);
+    recTick=setInterval(function(){
+      if(view.name!=='form'&&view.name!=='item'){stopRec();return;}  /* 离开页面就停，别一直占着麦克风 */
+      render();
+    },200);
+    render();
+  }).catch(function(e){
+    toast('无法录音：'+((e&&e.message)?e.message:'请允许使用麦克风'));
+  });
+}
+function stopRec(){
+  if(recState!=='recording'||!mediaRec)return;
+  recState='idle';
+  clearTimeout(recTimer);recTimer=null;
+  clearInterval(recTick);recTick=null;
+  try{mediaRec.stop();}catch(e){saveRec();}
+}
+function saveRec(){
+  var sound=recTarget;
+  recTarget=null;
+  if(recStream){try{recStream.getTracks().forEach(function(t){t.stop();});}catch(e){}recStream=null;}
+  var parts=recChunks,type=(mediaRec&&mediaRec.mimeType)||'audio/webm';
+  mediaRec=null;recChunks=[];
+  var blob=new Blob(parts,{type:type});
+  if(!blob.size){toast('没有录到声音，请再试一次');render();return;}
+  var fr=new FileReader();
+  fr.onload=function(){
+    recs()[sound]={d:fr.result,size:blob.size,at:Date.now()};
+    saveStore();
+    render();
+    toast('已保存「'+sound+'」的录音（'+Math.max(1,Math.round(fr.result.length/1024))+'KB）');
+  };
+  fr.onerror=function(){toast('保存录音失败，请重试');render();};
+  fr.readAsDataURL(blob);
+}
+function delRec(sound){
+  if(!hasRec(sound))return;
+  confirmModal('删除录音','确定删除「'+sound+'」的录音吗？只删录音，样本数据不受影响',function(){
+    delete recs()[sound];
+    saveStore();render();toast('已删除录音');
+  });
+}
+/* 声音选项上的小播放键（有录音才显示） */
+function recChipPlay(sound){
+  return hasRec(sound)?'<span class="chip-play" data-action="playRec" data-val="'+esc(sound)+'">▶</span>':'';
+}
+function recEntry(){
+  var n=recCount();
+  return '<div class="rec-entry"><button class="btn btn-ghost" data-action="toggleRec">🎤 声音录音'+(n?'（已录 '+n+' 个）':'')+'</button></div>';
+}
+function recCard(){
+  if(!recOpen)return '';
+  var r=recs();
+  var recording=(recState==='recording');
+  var el=recording?Math.floor((Date.now()-recStartTs)/1000):0;
+  var chips=store.presets.sounds.map(function(v){
+    var cls='chip rec-chip'+(recTarget===v?' active':'');
+    return '<span class="'+cls+'" data-action="recPick" data-val="'+esc(v)+'">'+esc(v)+recChipPlay(v)+'</span>';
+  }).join('');
+  var body;
+  if(recording){
+    body='<div class="rec-status"><span class="rec-dot"></span>正在录音：<b>'+esc(recTarget)+'</b> · '+el+' 秒（最长 '+(REC_MAX_MS/1000)+' 秒，会自动停止）</div>'
+      +'<button class="btn btn-danger btn-block" data-action="stopRec">■ 停止并保存</button>';
+  }else{
+    var hasT=!!(recTarget&&r[recTarget]);
+    body='<div class="rec-status">'+(recTarget?'已选：<b>'+esc(recTarget)+'</b>'+(hasT?'（已有录音，可试听或重录）':'（还没有录音）'):'先点上面一个声音，再按开始录音')+'</div>'
+      +'<div class="rec-actions">'
+      +'<button class="btn btn-primary" data-action="startRec"'+(recTarget?'':' disabled')+'>● 开始录音</button>'
+      +'<button class="btn btn-ghost" data-action="playRec" data-val="'+esc(recTarget||'')+'"'+(hasT?'':' disabled')+'>▶ 试听</button>'
+      +'<button class="btn btn-danger-ghost" data-action="delRec" data-val="'+esc(recTarget||'')+'"'+(hasT?'':' disabled')+'>删除</button>'
+      +'</div>';
+  }
+  var total=recTotalChars();
+  var warn=total>REC_TOTAL_WARN?'<div class="rec-warn">录音总量已约 '+Math.round(total/1024)+'KB，建议只保留常用的几个，否则同步会变慢</div>':'';
+  return '<div class="rec-card"><div class="feat-label">选择要录音的声音（点一下选中，最长 '+(REC_MAX_MS/1000)+' 秒）</div>'
+    +'<div class="chips">'+chips+'</div>'+body+warn
+    +'<div class="hint">声音后面带 ▶ 表示已有录音，点 ▶ 直接播放</div></div>';
 }
 
 /* ================= 云同步 ================= */
@@ -643,7 +785,11 @@ function fetchRemote(){
   });
 }
 function putRemote(obj,sha){
-  var body={message:'sync',content:b64encode(JSON.stringify(obj))};
+  var json=JSON.stringify(obj);
+  var enc=b64encode(json);
+  /* GitHub 单次上传有大小限制，超大时给一句人话提示，而不是甩个看不懂的状态码 */
+  if(enc.length>900000)throw new Error('数据太大（含录音约 '+Math.round(json.length/1024)+'KB），请在录音面板删掉几个不常用的再同步');
+  var body={message:'sync',content:enc};
   if(sha)body.sha=sha;
   return ghApi(DATA_PATH,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){
     if(r.ok)return;
@@ -707,7 +853,7 @@ function syncOnce(depth){
   return fetchRemote().then(function(remote){
     if(remoteIsNewer(remote)){
       var d=remote.data;
-      store={presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),samples:Array.isArray(d.samples)?d.samples:[],batches:Array.isArray(d.batches)?d.batches:[],updatedAt:d.updatedAt||0};
+      store={presets:Object.assign({},DEFAULT_PRESETS,d.presets||{}),samples:Array.isArray(d.samples)?d.samples:[],batches:Array.isArray(d.batches)?d.batches:[],recordings:(d.recordings&&typeof d.recordings==='object')?d.recordings:{},updatedAt:d.updatedAt||0};
       persistStore();
       setLastSync('已拉取云端数据');
       return 'pulled';
@@ -801,6 +947,15 @@ app.addEventListener('click',function(e){
       saveStore();render();toast('已删除');
     });
   }
+  else if(a==='toggleRec'){recOpen=!recOpen;render();}
+  else if(a==='recPick'){recTarget=el.dataset.val;render();}
+  else if(a==='playRec'){playRec(el.dataset.val);}
+  else if(a==='startRec'){
+    if(!recTarget){toast('请先点一个声音');return;}
+    startRec(recTarget);
+  }
+  else if(a==='stopRec'){stopRec();}
+  else if(a==='delRec'){delRec(el.dataset.val);}
   else if(a==='formPick'){
     var k2=el.dataset.key,v2=el.dataset.val;
     formState[k2]=(formState[k2]===v2?null:v2);

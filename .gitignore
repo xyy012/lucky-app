@@ -4,3 +4,5 @@ _combined*.js
 _tsync_*.js
 _tlogic_*.js
 _test.js
+_combined*.js
+_trec_body*.js
